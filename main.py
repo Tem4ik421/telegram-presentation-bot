@@ -1,13 +1,13 @@
 """
 Бот для создания AI-презентаций в PDF.
-Версия 36.1 - Fix wkhtmltopdf for Linux/Cloud.
+Версия 36.2 - FINAL FIX for Render/Docker startup.
 """
 
 import os
 import re
 import logging
 import sqlite3
-from dotenv import load_dotenv
+# from dotenv import load_dotenv # <--- ЦЕЙ РЯДОК ВИДАЛЕНО!
 import requests
 import html
 import base64
@@ -22,15 +22,14 @@ import google.generativeai as genai
 from PIL import Image
 
 # --- 1. ЗАГРУЗКА НАСТРОЕК ---
-load_dotenv()
+# load_dotenv() # <--- ЦЕЙ РЯДОК ВИДАЛЕНО, щоб читати ключі напряму з Render Variables!
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 PIXABAY_API_KEY = os.getenv('PIXABAY_API_KEY')
 
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 
-# ИСПРАВЛЕНИЕ: Конфигурируем pdfkit без указания пути. 
-# На облачном сервере (Linux) утилита wkhtmltopdf должна быть найдена в системном PATH.
+# Конфигурация pdfkit (уже исправлено в Dockerfile)
 try:
     config = pdfkit.configuration() 
 except OSError as e:
@@ -390,7 +389,7 @@ def handle_callbacks(call):
 
 # --- ЗАПУСК БОТА ---
 if __name__ == '__main__':
-    print("Бот запущен (v36.1 - Fix wkhtmltopdf for Linux/Cloud)...")
+    print("Бот запущен (v36.2 - FINAL FIX for Render/Docker startup)...")
     while True:
         try:
             if config is None:

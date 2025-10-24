@@ -1,14 +1,11 @@
-# Використовуємо більш стабільний образ на базі Debian Bullseye
-FROM python:3.11-slim-bullseye
+# Використовуємо Alpine Linux (менший та швидший)
+FROM python:3.11-alpine
 
-# Встановлюємо wkhtmltopdf та всі необхідні залежності
-# Ця команда має успішно спрацювати на Bullseye
-RUN apt-get update && apt-get install -y \
-    wkhtmltopdf \
-    libxrender1 \
-    libfontconfig1 \
-    libxtst6 \
-    && rm -rf /var/lib/apt/lists/*
+# Встановлюємо wkhtmltopdf та всі необхідні залежності через apk
+# Alpine використовує інший пакетний менеджер (apk)
+RUN apk update && \
+    apk add --no-cache wkhtmltopdf \
+    && rm -rf /var/cache/apk/*
 
 # Встановлюємо робочу директорію
 WORKDIR /app

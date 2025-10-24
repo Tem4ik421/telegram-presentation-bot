@@ -1,4 +1,4 @@
-# Використовуємо образ, де wkhtmltopdf вже встановлено
+# Використовуємо образ з встановленим wkhtmltopdf
 FROM madduci/python-wkhtmltopdf:3.11-alpine-0.12.6
 
 # Встановлюємо робочу директорію
@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копіюємо решту файлів проєкту в контейнер
 COPY . .
 
-# Команда для запуску бота
-CMD ["python3", "main.py"]
+# ФІНАЛЬНЕ ВИПРАВЛЕННЯ: Використовуємо "python" замість "python3" для Alpine
+CMD ["python", "main.py"]

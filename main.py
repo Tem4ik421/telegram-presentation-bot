@@ -34,7 +34,6 @@ bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
 try:
     config = pdfkit.configuration() 
 except OSError as e:
-    # Записываем ошибку, но даем возможность боту запуститься, если PDF не используется сразу
     logging.error(f"Ошибка инициализации pdfkit: {e}. Убедитесь, что 'wkhtmltopdf' установлен.")
     config = None 
 
@@ -50,7 +49,6 @@ else:
 # --- 2. БАЗА ДАННЫХ ---
 DB_NAME = 'bot_stats.db'
 def init_db():
-    # Исправлены ошибочные концы строк в исходном коде
     conn = sqlite3.connect(DB_NAME, check_same_thread=False); c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS user_stats (user_id INTEGER PRIMARY KEY, presentations_count INTEGER DEFAULT 0, questions_count INTEGER DEFAULT 0)')
     c.execute('CREATE TABLE IF NOT EXISTS presentations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, topic TEXT, created_at TEXT)')
@@ -263,9 +261,12 @@ def handle_text_messages(message):
         session['state'] = 'waiting_slide_count'
         
         keyboard = types.InlineKeyboardMarkup(row_width=3)
+        # ИСПРАВЛЕНИЕ: Увеличенный выбор слайдов
         keyboard.add(types.InlineKeyboardButton("3 слайда", callback_data='slide_count_3'),
                      types.InlineKeyboardButton("5 слайдов", callback_data='slide_count_5'),
                      types.InlineKeyboardButton("7 слайдов", callback_data='slide_count_7'))
+        keyboard.add(types.InlineKeyboardButton("10 слайдов", callback_data='slide_count_10'),
+                     types.InlineKeyboardButton("15 слайдов", callback_data='slide_count_15'))
         
         bot.send_message(chat_id, f"Тема: _{session['topic']}_\n\n🔢 **Выберите количество слайдов:**", reply_markup=keyboard, parse_mode='Markdown')
 

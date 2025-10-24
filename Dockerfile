@@ -1,8 +1,8 @@
-# Використовуємо менший і надійніший Python-образ
-FROM python:3.11-slim-buster
+# Використовуємо більш стабільний образ на базі Debian Bullseye
+FROM python:3.11-slim-bullseye
 
-# Встановлюємо wkhtmltopdf та всі його залежності
-# Цей рядок є найпоширенішим і найнадійнішим способом встановлення wkhtmltopdf
+# Встановлюємо wkhtmltopdf та всі необхідні залежності
+# Ця команда має успішно спрацювати на Bullseye
 RUN apt-get update && apt-get install -y \
     wkhtmltopdf \
     libxrender1 \

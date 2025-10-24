@@ -1,11 +1,5 @@
-# Використовуємо Alpine Linux (менший та швидший)
-FROM python:3.11-alpine
-
-# Встановлюємо wkhtmltopdf та всі необхідні залежності через apk
-# Alpine використовує інший пакетний менеджер (apk)
-RUN apk update && \
-    apk add --no-cache wkhtmltopdf \
-    && rm -rf /var/cache/apk/*
+# Використовуємо образ, де wkhtmltopdf вже встановлено
+FROM madduci/python-wkhtmltopdf:3.11-alpine-0.12.6
 
 # Встановлюємо робочу директорію
 WORKDIR /app

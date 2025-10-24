@@ -1,10 +1,13 @@
-# Використовуємо офіційний Python-образ як базу
-FROM python:3.11-slim
+# Використовуємо менший і надійніший Python-образ
+FROM python:3.11-slim-buster
 
-# Встановлюємо wkhtmltopdf та інші системні залежності
+# Встановлюємо wkhtmltopdf та всі його залежності
+# Цей рядок є найпоширенішим і найнадійнішим способом встановлення wkhtmltopdf
 RUN apt-get update && apt-get install -y \
     wkhtmltopdf \
-    build-essential \
+    libxrender1 \
+    libfontconfig1 \
+    libxtst6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Встановлюємо робочу директорію
@@ -14,7 +17,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копіюємо всі файли проєкту в контейнер
+# Копіюємо решту файлів проєкту в контейнер
 COPY . .
 
 # Команда для запуску бота

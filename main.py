@@ -1,6 +1,6 @@
 """
 Бот для создания AI-презентаций в PDF.
-Версия 36.0 - Aesthetic Upgrade. Улучшенный поиск фото, выравнивание, больше текста.
+Версия 36.1 - Fix wkhtmltopdf for Linux/Cloud.
 """
 
 import os
@@ -26,10 +26,18 @@ load_dotenv()
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 PIXABAY_API_KEY = os.getenv('PIXABAY_API_KEY')
-WKHTMLTOPDF_PATH = os.getenv('WKHTMLTOPDF_PATH', r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
 
 bot = telebot.TeleBot(TOKEN, parse_mode='HTML')
-config = pdfkit.configuration(wkhtmltopdf=WKHTMLTOPDF_PATH)
+
+# ИСПРАВЛЕНИЕ: Конфигурируем pdfkit без указания пути. 
+# На облачном сервере (Linux) утилита wkhtmltopdf должна быть найдена в системном PATH.
+try:
+    config = pdfkit.configuration() 
+except OSError as e:
+    # Записываем ошибку, но даем возможность боту запуститься, если PDF не используется сразу
+    logging.error(f"Ошибка инициализации pdfkit: {e}. Убедитесь, что 'wkhtmltopdf' установлен.")
+    config = None 
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 user_sessions = {}
 
@@ -42,6 +50,7 @@ else:
 # --- 2. БАЗА ДАННЫХ ---
 DB_NAME = 'bot_stats.db'
 def init_db():
+    # Исправлены ошибочные концы строк в исходном коде
     conn = sqlite3.connect(DB_NAME, check_same_thread=False); c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS user_stats (user_id INTEGER PRIMARY KEY, presentations_count INTEGER DEFAULT 0, questions_count INTEGER DEFAULT 0)')
     c.execute('CREATE TABLE IF NOT EXISTS presentations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, topic TEXT, created_at TEXT)')
@@ -51,12 +60,14 @@ def init_db():
 def save_presentation_topic(user_id, topic):
     conn = sqlite3.connect(DB_NAME, check_same_thread=False); c = conn.cursor()
     c.execute("INSERT INTO presentations (user_id, topic, created_at) VALUES (?, ?, ?)", (user_id, topic, datetime.now().isoformat()))
-    c.execute("INSERT OR IGNORE INTO user_stats (user_id) VALUES (?)", (user_id,)); c.execute("UPDATE user_stats SET presentations_count = presentations_count + 1 WHERE user_id = ?", (user_id,)); conn.commit(); conn.close()
+    c.execute("INSERT OR IGNORE INTO user_stats (user_id) VALUES (?)", (user_id,)); c.execute("UPDATE user_stats SET presentations_count = presentations_count + 1 WHERE user_id = ?", (user_id,))
+    conn.commit(); conn.close()
 
 def save_question_history(user_id, question):
     conn = sqlite3.connect(DB_NAME, check_same_thread=False); c = conn.cursor()
     c.execute("INSERT INTO questions (user_id, question_text, created_at) VALUES (?, ?, ?)", (user_id, question, datetime.now().isoformat()))
-    c.execute("INSERT OR IGNORE INTO user_stats (user_id) VALUES (?)", (user_id,)); c.execute("UPDATE user_stats SET questions_count = questions_count + 1 WHERE user_id = ?", (user_id,)); conn.commit(); conn.close()
+    c.execute("INSERT OR IGNORE INTO user_stats (user_id) VALUES (?)", (user_id,)); c.execute("UPDATE user_stats SET questions_count = questions_count + 1 WHERE user_id = ?", (user_id,))
+    conn.commit(); conn.close()
 
 def get_user_profile_data(user_id):
     conn = sqlite3.connect(DB_NAME, check_same_thread=False); c = conn.cursor()
@@ -109,8 +120,10 @@ def find_image_pixabay(query, user_id, fallback_query=None):
 
 # --- 4. ГЕНЕРАТОР PDF (ФИНАЛЬНАЯ ВЕРСТКА НА ТАБЛИЦАХ) ---
 def create_presentation_pdf(user_id, slides_data):
+    if not config: 
+        raise RuntimeError("PDF-генератор не может быть запущен: wkhtmltopdf не сконфигурирован.")
+
     filename = f'presentation_{user_id}.pdf'
-    
     html_head = f"""
     <html><head><meta charset="UTF-8"><title>Презентация</title>
     <style>
@@ -147,14 +160,10 @@ def create_presentation_pdf(user_id, slides_data):
         img_b64 = image_to_base64(slide.get('image_path'))
         
         slide_html = '<div class="page">'
-        # --- НАЧАЛО СТРУКТУРЫ СЛАЙДА НА ТАБЛИЦАХ ---
         
-        # Основная таблица-макет
         slide_html += '<table style="width: 100%; border-collapse: collapse;">'
         
-        # Секция 1: Картинка слева, текст справа
         slide_html += '<tr>'
-        # --- ИЗМЕНЕНИЕ: ИДЕАЛЬНОЕ ВЫРАВНИВАНИЕ ПО ВЕРХУ ---
         slide_html += f'<td style="width: 170px; padding-right: 30px; vertical-align: top;">'
         if img_b64:
             slide_html += f'<img src="data:image/jpeg;base64,{img_b64}" class="image-portrait">'
@@ -165,11 +174,9 @@ def create_presentation_pdf(user_id, slides_data):
         slide_html += '</td>'
         slide_html += '</tr>'
         
-        # Разделитель, если есть инфоблоки
         if slide.get("info_blocks"):
             slide_html += '<tr><td colspan="2"><hr class="separator"></td></tr>'
-        
-            # Секция 2: Информационные блоки в две колонки
+            
             columns_title = slide["info_blocks"][0].get("section_title", "Основные моменты")
             slide_html += f'<tr><td colspan="2"><h2 class="columns-title">{html.escape(columns_title)}</h2></td></tr>'
             
@@ -189,12 +196,11 @@ def create_presentation_pdf(user_id, slides_data):
             slide_html += '</td></tr>'
 
         slide_html += '</table>'
-        # --- КОНЕЦ СТРУКТУРЫ СЛАЙДА ---
         slide_html += '</div>'
         slides_html += slide_html
 
     final_html = html_head + slides_html + "</body></html>"
-    options = {'page-size':'A4', 'margin-top':'0', 'margin-right':'0', 'margin-bottom':'0', 'margin-left':'0', 'encoding':"UTF-8", '--enable-local-file-access': None}
+    options = {'page-size':'A4', 'margin-top':'0', 'margin-right':'0', 'margin-bottom':'0', 'margin-left':'0', 'encoding':"UTF-8"}
     pdfkit.from_string(final_html, filename, options=options, configuration=config)
     return filename
 
@@ -207,39 +213,106 @@ def get_main_menu_keyboard():
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_sessions.pop(message.from_user.id, None)
-    bot.send_message(message.chat.id, "👋 **Привет!**\n\nЯ AI-ассистент для создания стильных PDF-презентаций.", reply_markup=get_main_menu_keyboard())
+    bot.send_message(message.chat.id, "👋 **Привет!**\n\nЯ AI-ассистент для создания стильных PDF-презентаций.", reply_markup=get_main_menu_keyboard(), parse_mode='Markdown')
 
 @bot.message_handler(func=lambda msg: msg.text == "Профиль 👤")
 def handle_profile(message):
-    # ... (код без изменений)
-    pass
+    user_id = message.from_user.id
+    p_count, q_count, topics, questions = get_user_profile_data(user_id)
+    
+    topic_list = "\n".join([f"  • *{topic[:35]}...*" for topic in topics]) if topics else "  Нет данных"
+    q_list = "\n".join([f"  • *{q[:35]}...*" for q in questions]) if questions else "  Нет данных"
+
+    profile_text = f"""
+**Профиль пользователя** 👤
+---
+**Создано презентаций:** {p_count}
+**Задано вопросов:** {q_count}
+
+**Последние темы презентаций:**
+{topic_list}
+
+**Последние вопросы:**
+{q_list}
+    """
+    bot.send_message(message.chat.id, profile_text, parse_mode='Markdown')
 
 @bot.message_handler(func=lambda msg: msg.text == "Ответы на вопросы ❓")
 def handle_qna_start(message):
-    # ... (код без изменений)
-    pass
+    user_id = message.from_user.id
+    user_sessions[user_id] = {'state': 'waiting_qna_question'}
+    bot.send_message(message.chat.id, "💬 **Задайте любой вопрос.** Я использую Gemini, чтобы дать точный и развернутый ответ.", reply_markup=types.ReplyKeyboardRemove())
 
 @bot.message_handler(func=lambda msg: msg.text == "Создать презентацию 🎨")
 def handle_presentation_start(message):
-    # ... (код без изменений)
-    pass
+    user_id = message.from_user.id
+    user_sessions[user_id] = {'state': 'waiting_topic'}
+    bot.send_message(message.chat.id, "✨ **Введите тему презентации.**\n\n_Например: 'Будущее квантовых компьютеров' или 'История римских легионов'._", reply_markup=types.ReplyKeyboardRemove())
 
 @bot.message_handler(content_types=['text'])
 def handle_text_messages(message):
-    # ... (код без изменений)
-    pass
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    session = user_sessions.get(user_id)
+
+    if not session:
+        return handle_start(message)
+    
+    if session['state'] == 'waiting_topic':
+        session['topic'] = message.text
+        session['state'] = 'waiting_slide_count'
+        
+        keyboard = types.InlineKeyboardMarkup(row_width=3)
+        keyboard.add(types.InlineKeyboardButton("3 слайда", callback_data='slide_count_3'),
+                     types.InlineKeyboardButton("5 слайдов", callback_data='slide_count_5'),
+                     types.InlineKeyboardButton("7 слайдов", callback_data='slide_count_7'))
+        
+        bot.send_message(chat_id, f"Тема: _{session['topic']}_\n\n🔢 **Выберите количество слайдов:**", reply_markup=keyboard, parse_mode='Markdown')
+
+    elif session['state'] == 'waiting_qna_question':
+        handle_qna_question(message)
+        
+    else:
+        if session.get('state') != 'generating':
+            return handle_start(message)
 
 def is_math_query(text: str):
-    # ... (код без изменений)
-    pass
+    return bool(re.search(r'\d[\+\-\*\/]\d', text) or re.search(r'\b(что|как|почему|объясни|зачем)\b', text, re.IGNORECASE))
 
 def handle_qna_question(message):
-    # ... (код без изменений)
-    pass
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    if not GEMINI_API_KEY or not is_math_query(message.text):
+        bot.send_message(chat_id, "Извините, эта функция работает только для сложных вопросов, требующих расчетов или развернутого ответа.")
+        user_sessions.pop(user_id, None)
+        return bot.send_message(chat_id, "Готов к новым задачам!", reply_markup=get_main_menu_keyboard())
+
+    last_msg = bot.send_message(chat_id, "⏳ Думаю над ответом...")
+    save_question_history(user_id, message.text)
+    
+    try:
+        prompt = f"Ответь максимально подробно и четко на вопрос: {message.text}"
+        response_text = call_gemini(prompt)
+        bot.edit_message_text(f"✅ **Ответ готов:**\n\n{response_text}", chat_id, last_msg.message_id, parse_mode='Markdown')
+        
+    except ConnectionError:
+        bot.edit_message_text("🚫 Ошибка: Ключ Gemini API не установлен.", chat_id, last_msg.message_id)
+    except Exception as e:
+        bot.edit_message_text(f"🚫 Произошла ошибка при получении ответа: {e}", chat_id, last_msg.message_id)
+    finally:
+        user_sessions.pop(user_id, None)
+        bot.send_message(chat_id, "Готов к новым задачам!", reply_markup=get_main_menu_keyboard())
 
 def start_generation_process(user_id, chat_id, slide_count):
     session = user_sessions.get(user_id)
     if not session: return
+    
+    if not config:
+        bot.send_message(chat_id, "🚫 Критическая ошибка: Не могу запустить PDF-генератор. Убедитесь, что 'wkhtmltopdf' установлен на сервере.")
+        user_sessions.pop(user_id, None)
+        return bot.send_message(chat_id, "Готов к новым задачам!", reply_markup=get_main_menu_keyboard())
+        
     session['state'] = 'generating'
     last_msg_id = session.get('last_msg_id')
     
@@ -248,14 +321,13 @@ def start_generation_process(user_id, chat_id, slide_count):
     try:
         bot.edit_message_text("⏳ Генерирую контент (1/3)...", chat_id, last_msg_id)
         
-        # --- ИЗМЕНЕНИЕ: ПРОСИМ AI ДАТЬ БОЛЬШЕ ТЕКСТА ---
         prompt = (
             f"Создай контент для презентации в журнальном стиле из {slide_count} слайдов на тему '{session['topic']}'. "
             f"Для КАЖДОГО из {slide_count} слайдов верни JSON-объект с ключами: "
             f"'title' (основной заголовок слайда), "
             f"'intro' (вступительный текст на 2-3 развернутых абзаца), "
             f"'image_query' (запрос для красивого портретного или пейзажного изображения), "
-            f"'info_blocks' (массив из 2 или 4 объектов. У первого объекта должен быть ключ 'section_title', например, 'Ключевые аспекты'. "
+            f"'info_blocks' (массив из 2 или 4 объектов. У первого объекта должен быть ключ 'section_title', например, 'Ключевые принципы'). "
             f"У всех объектов должны быть ключи 'title' и 'text' (текст должен быть подробным, на 3-5 предложений)). "
             f"В итоге верни ОДИН БОЛЬШОЙ JSON-массив, содержащий все {slide_count} объектов."
         )
@@ -294,14 +366,35 @@ def start_generation_process(user_id, chat_id, slide_count):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
-    # ... (код без изменений)
-    pass
+    user_id = call.from_user.id
+    chat_id = call.message.chat.id
+    message_id = call.message.message_id
+    session = user_sessions.get(user_id)
+
+    if not session or session.get('state') != 'waiting_slide_count':
+        bot.answer_callback_query(call.id, "Сессия устарела. Начните сначала.", show_alert=True)
+        return handle_start(call.message)
+
+    if call.data.startswith('slide_count_'):
+        slide_count = int(call.data.split('_')[2])
+        session['slide_count'] = slide_count
+        session['last_msg_id'] = message_id
+        
+        bot.edit_message_reply_markup(chat_id, message_id)
+        
+        start_generation_process(user_id, chat_id, slide_count)
+        
+    bot.answer_callback_query(call.id)
+    
 
 # --- ЗАПУСК БОТА ---
 if __name__ == '__main__':
-    print("Бот запущен (v36.0 - Aesthetic Upgrade)...")
+    print("Бот запущен (v36.1 - Fix wkhtmltopdf for Linux/Cloud)...")
     while True:
         try:
+            if config is None:
+                print("ПРЕДУПРЕЖДЕНИЕ: wkhtmltopdf не сконфигурирован. Функции PDF могут не работать.")
+            
             bot.polling(none_stop=True)
         except Exception as e:
             print(f"Критическая ошибка! Перезапуск через 15 секунд. Ошибка: {e}")

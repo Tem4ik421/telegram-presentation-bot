@@ -6,7 +6,8 @@ WORKDIR /app
 
 # Копіюємо requirements.txt та встановлюємо Python-залежності
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Видаляємо --no-cache-dir, щоб спростити виконання
+RUN pip install -r requirements.txt
 
 # Копіюємо решту файлів проєкту в контейнер
 COPY . .
